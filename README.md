@@ -1,6 +1,6 @@
 # {{PROJECT_NAME}}
 
-> version-0.1.0 | date-1970-01-01
+> version-0.1.0 | date-2026-03-31
 
 ## 简介
 
