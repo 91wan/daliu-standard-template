@@ -22,15 +22,22 @@ jobs:
       - name: 更新 README 日期
         id: patch
         run: |
+          if [ ! -f README.md ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if ! grep -q 'date-[0-9-]*' README.md 2>/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           TODAY=$(date +%Y-%m-%d)
-          CURRENT=$(grep -o 'date-[0-9-]*' README.md 2>/dev/null | head -1 | sed 's/date-//' || echo '')
+          CURRENT=$(grep -o 'date-[0-9-]*' README.md | head -1 | sed 's/date-//')
           if [ "$CURRENT" != "$TODAY" ]; then
-            sed -i "s/date-[0-9-]*/date-${TODAY}/" README.md 2>/dev/null || true
+            sed -i "s/date-[0-9-]*/date-${TODAY}/" README.md
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
-
       - name: Commit & Push
         if: steps.patch.outputs.changed == 'true'
         run: |
