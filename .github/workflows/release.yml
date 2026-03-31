@@ -23,9 +23,9 @@ jobs:
         id: patch
         run: |
           TODAY=$(date +%Y-%m-%d)
-          CURRENT=$(grep -o 'date-[0-9-]*' README.md | head -1 | sed 's/date-//')
+          CURRENT=$(grep -o 'date-[0-9-]*' README.md 2>/dev/null | head -1 | sed 's/date-//' || echo '')
           if [ "$CURRENT" != "$TODAY" ]; then
-            sed -i "s/date-[0-9-]*/date-${TODAY}/" README.md
+            sed -i "s/date-[0-9-]*/date-${TODAY}/" README.md 2>/dev/null || true
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
