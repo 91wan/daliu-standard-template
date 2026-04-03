@@ -10,6 +10,7 @@ permissions:
 
 jobs:
 
+  # ── Job 1：push main → 自动修改文件（健壮版，零脏 Commit）────────────
   auto-doc:
     name: 📄 Auto-Doc
     runs-on: ubuntu-latest
@@ -19,34 +20,23 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 更新 README 日期
-        id: patch
-        run: |
-          if [ ! -f README.md ]; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          if ! grep -q 'date-[0-9-]*' README.md 2>/dev/null; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          TODAY=$(date +%Y-%m-%d)
-          CURRENT=$(grep -o 'date-[0-9-]*' README.md | head -1 | sed 's/date-//')
-          if [ "$CURRENT" != "$TODAY" ]; then
-            sed -i "s/date-[0-9-]*/date-${TODAY}/" README.md
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Commit & Push
-        if: steps.patch.outputs.changed == 'true'
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git commit -m "docs: auto-update date [skip ci]"
-          git push
+      # [插槽] 在此处插入你的任何文件自动修改逻辑，例如：
+      # - name: Update README date
+      #   run: sed -i "s/date-[0-9-]*/date-$(date +%Y-%m-%d)/" README.md
 
+      - name: Commit changes if any
+        run: |
+          if ! git diff --quiet; then
+            git config --global user.name  "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add -u
+            git commit -m "docs: auto-update files [skip ci]"
+            git push
+          else
+            echo "✅ 无需更新：工作区干净。"
+          fi
+
+  # ── Job 2：push v* tag → 从 CHANGELOG 提取说明 + GitHub Release ──────
   release:
     name: 🚀 Release
     runs-on: ubuntu-latest
@@ -56,30 +46,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 版本号
-        id: ver
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-
-      - name: Changelog（上一个 tag 到本 tag）
-        id: log
+      - name: Extract Release Notes from CHANGELOG
+        id: extract_notes
         run: |
-          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV" ]; then
-            LOG=$(git log "$PREV"..HEAD --pretty=format:"- %s" --no-merges)
-          else
-            LOG=$(git log --pretty=format:"- %s" --no-merges | head -20)
-          fi
-          echo "LOG<<EOF" >> $GITHUB_OUTPUT
-          echo "$LOG"     >> $GITHUB_OUTPUT
-          echo "EOF"      >> $GITHUB_OUTPUT
+          TAG_NAME=${GITHUB_REF#refs/tags/}
 
-      - name: 创建 GitHub Release
+          # 核心萃取：awk 截取两个 "## 版本号" 之间的内容
+          if [ -f CHANGELOG.md ]; then
+            awk "/^## ${TAG_NAME}/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md > release_notes.txt
+          fi
+
+          # 兜底：CHANGELOG 没有对应条目时，回退到最近 git log
+          if [ ! -s release_notes.txt ]; then
+            echo "⚠️ 未在 CHANGELOG.md 找到 ${TAG_NAME} 对应记录，回退到 git log。"
+            PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            if [ -n "$PREV" ]; then
+              git log "$PREV"..HEAD --pretty=format:"- %s" --no-merges > release_notes.txt
+            else
+              git log --pretty=format:"- %s" --no-merges | head -20 > release_notes.txt
+            fi
+          fi
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "v${{ steps.ver.outputs.VERSION }}"
-          body: |
-            ## 更新内容
-            ${{ steps.log.outputs.LOG }}
+          name: ${{ github.ref_name }}
+          body_path: release_notes.txt
           draft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
         env:
